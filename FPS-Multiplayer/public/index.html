@@ -1,0 +1,562 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>FPS Multiplayer - Square Arena</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #87ceeb;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.65);
+      color: white;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    #overlay h1 {
+      margin: 0;
+      font-size: 38px;
+    }
+
+    #overlay p {
+      margin: 4px 16px;
+      line-height: 1.6;
+    }
+
+    #hud {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      color: white;
+      text-shadow: 1px 1px 3px black;
+    }
+
+    #info {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 8px;
+      line-height: 1.6;
+    }
+
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      border: 2px solid white;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <div id="overlay">
+    <h1>SQUARE ARENA</h1>
+    <p>Nhấn để vào trận</p>
+    <p>WASD: Di chuyển | SHIFT: Chạy</p>
+    <p>SPACE: Nhảy | ESC: Mở khóa chuột</p>
+  </div>
+
+  <div id="hud">
+    <div id="info">
+      FPS MULTIPLAYER<br>
+      Người chơi: <span id="count">1</span><br>
+      Trạng thái: <span id="status">Đang kết nối...</span>
+    </div>
+    <div id="crosshair"></div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+
+  <script type="module">
+    import * as THREE from "three";
+
+    // =========================
+    // 1. KẾT NỐI MULTIPLAYER
+    // =========================
+
+    const socket = io("https://fps-multiplayer-76j5.onrender.com");
+
+    const remotePlayers = new Map();
+
+    const countElement = document.getElementById("count");
+    const statusElement = document.getElementById("status");
+    const overlay = document.getElementById("overlay");
+
+    socket.on("connect", () => {
+      statusElement.textContent = "Đã kết nối";
+    });
+
+    socket.on("disconnect", () => {
+      statusElement.textContent = "Mất kết nối";
+    });
+
+    // =========================
+    // 2. KHỞI TẠO THREE.JS
+    // =========================
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x87ceeb, 45, 100);
+
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      200
+    );
+
+    camera.rotation.order = "YXZ";
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true
+    });
+
+    renderer.setSize(
+      window.innerWidth,
+      window.innerHeight
+    );
+
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, 1.5)
+    );
+
+    renderer.shadowMap.enabled = false;
+
+    document.body.appendChild(renderer.domElement);
+
+    // =========================
+    // 3. ÁNH SÁNG
+    // =========================
+
+    scene.add(new THREE.HemisphereLight(
+      0xffffff,
+      0x65745a,
+      2
+    ));
+
+    const sunlight = new THREE.DirectionalLight(
+      0xffffff,
+      2
+    );
+
+    sunlight.position.set(15, 30, 10);
+    scene.add(sunlight);
+
+    // =========================
+    // 4. MAP VUÔNG 50 x 50
+    // =========================
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(50, 50),
+      new THREE.MeshStandardMaterial({
+        color: 0x567c42,
+        roughness: 1
+      })
+    );
+
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    scene.add(ground);
+
+    // Lưới giúp quan sát khoảng cách
+    const grid = new THREE.GridHelper(
+      50, 50, 0x364d2c, 0x71845e
+    );
+
+    grid.position.y = 0.015;
+    scene.add(grid);
+
+    // Tường bao quanh map
+    const wallMaterial = new THREE.MeshStandardMaterial({
+      color: 0x858b91,
+      roughness: 0.9
+    });
+
+    function createWall(x, z, width, depth) {
+      const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(width, 3, depth),
+        wallMaterial
+      );
+
+      wall.position.set(x, 1.5, z);
+      scene.add(wall);
+    }
+
+    createWall(0, -25, 50, 1);
+    createWall(0, 25, 50, 1);
+    createWall(-25, 0, 1, 50);
+    createWall(25, 0, 1, 50);
+
+    // Một vài khối hộp làm vật cản ban đầu
+    const obstacleMaterial =
+      new THREE.MeshStandardMaterial({
+        color: 0x777777
+      });
+
+    function createObstacle(x, z, w, h, d) {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        obstacleMaterial
+      );
+
+      box.position.set(x, h / 2, z);
+      scene.add(box);
+    }
+
+    createObstacle(0, 0, 3, 2, 3);
+    createObstacle(8, 5, 5, 2, 2);
+    createObstacle(-8, -5, 2, 3, 5);
+
+    // =========================
+    // 5. NGƯỜI CHƠI
+    // =========================
+
+    const player = {
+      x: 0,
+      y: 0,
+      z: 8,
+      yaw: 0,
+      pitch: 0,
+      verticalSpeed: 0,
+      grounded: true
+    };
+
+    const EYE_HEIGHT = 1.7;
+    const keys = {};
+
+    camera.position.set(
+      player.x,
+      player.y + EYE_HEIGHT,
+      player.z
+    );
+
+    function createRemotePlayer(data) {
+      const group = new THREE.Group();
+
+      const material = new THREE.MeshStandardMaterial({
+        color: data.color ?? "#3498db",
+        roughness: 0.8
+      });
+
+      // Thân người
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.7, 1.1, 0.4),
+        material
+      );
+
+      body.position.y = 0.95;
+      group.add(body);
+
+      // Đầu
+      const head = new THREE.Mesh(
+        new THREE.BoxGeometry(0.45, 0.45, 0.45),
+        material
+      );
+
+      head.position.y = 1.75;
+      group.add(head);
+
+      group.position.set(
+        data.x,
+        data.y,
+        data.z
+      );
+
+      group.rotation.y = data.yaw || 0;
+
+      scene.add(group);
+
+      return {
+        group,
+        target: {
+          x: data.x,
+          y: data.y,
+          z: data.z,
+          yaw: data.yaw || 0
+        }
+      };
+    }
+
+    function updateCount() {
+      countElement.textContent =
+        remotePlayers.size + (socket.connected ? 1 : 0);
+    }
+
+    socket.on("currentPlayers", (players) => {
+      for (const [id, data] of Object.entries(players)) {
+        if (id === socket.id) continue;
+
+        remotePlayers.set(
+          id,
+          createRemotePlayer(data)
+        );
+      }
+
+      updateCount();
+    });
+
+    socket.on("playerJoined", ({ id, player: data }) => {
+      if (id === socket.id) return;
+      if (remotePlayers.has(id)) return;
+
+      remotePlayers.set(id, createRemotePlayer(data));
+      updateCount();
+    });
+
+    socket.on("playerMoved", (data) => {
+      const remote = remotePlayers.get(data.id);
+      if (!remote) return;
+
+      remote.target.x = data.x;
+      remote.target.y = data.y;
+      remote.target.z = data.z;
+      remote.target.yaw = data.yaw;
+    });
+
+    socket.on("playerLeft", (id) => {
+      const remote = remotePlayers.get(id);
+      if (!remote) return;
+
+      scene.remove(remote.group);
+      remotePlayers.delete(id);
+      updateCount();
+    });
+
+    // =========================
+    // 6. ĐIỀU KHIỂN FPS
+    // =========================
+
+    overlay.addEventListener("click", () => {
+      if (!socket.connected) return;
+      renderer.domElement.requestPointerLock();
+    });
+
+    document.addEventListener("pointerlockchange", () => {
+      overlay.style.display =
+        document.pointerLockElement === renderer.domElement
+          ? "none"
+          : "flex";
+    });
+
+    document.addEventListener("mousemove", (event) => {
+      if (document.pointerLockElement !== renderer.domElement) {
+        return;
+      }
+
+      const sensitivity = 0.002;
+
+      player.yaw -= event.movementX * sensitivity;
+      player.pitch -= event.movementY * sensitivity;
+
+      player.pitch = THREE.MathUtils.clamp(
+        player.pitch,
+        -Math.PI / 2 + 0.05,
+        Math.PI / 2 - 0.05
+      );
+
+      camera.rotation.set(
+        player.pitch,
+        player.yaw,
+        0,
+        "YXZ"
+      );
+    });
+
+    document.addEventListener("keydown", (event) => {
+      keys[event.code] = true;
+
+      if (
+        ["Space", "ArrowUp", "ArrowDown",
+         "ArrowLeft", "ArrowRight"].includes(event.code)
+      ) {
+        event.preventDefault();
+      }
+
+      if (
+        event.code === "Space" &&
+        player.grounded
+      ) {
+        player.verticalSpeed = 7;
+        player.grounded = false;
+      }
+    });
+
+    document.addEventListener("keyup", (event) => {
+      keys[event.code] = false;
+    });
+
+    window.addEventListener("blur", () => {
+      for (const key in keys) {
+        keys[key] = false;
+      }
+    });
+
+    // =========================
+    // 7. VÒNG LẶP GAME
+    // =========================
+
+    let lastTime = performance.now();
+    let lastNetworkUpdate = 0;
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min(
+        (now - lastTime) / 1000,
+        0.05
+      );
+
+      lastTime = now;
+
+      if (document.pointerLockElement === renderer.domElement) {
+        const forward =
+          (keys["KeyW"] ? 1 : 0) -
+          (keys["KeyS"] ? 1 : 0);
+
+        const sideways =
+          (keys["KeyD"] ? 1 : 0) -
+          (keys["KeyA"] ? 1 : 0);
+
+        const running = keys["ShiftLeft"] ||
+                        keys["ShiftRight"];
+
+        const speed = running ? 10 : 6;
+
+        // Chuẩn hóa đường chéo
+        const length = Math.hypot(forward, sideways);
+        const scale = length > 0 ? 1 / length : 0;
+
+        player.x += (
+          Math.sin(player.yaw) * forward +
+          Math.cos(player.yaw) * sideways
+        ) * speed * scale * dt;
+
+        player.z += (
+          -Math.cos(player.yaw) * forward +
+          Math.sin(player.yaw) * sideways
+        ) * speed * scale * dt;
+
+        // Giới hạn trong map
+        player.x = THREE.MathUtils.clamp(
+          player.x, -24, 24
+        );
+
+        player.z = THREE.MathUtils.clamp(
+          player.z, -24, 24
+        );
+
+        // Trọng lực và nhảy
+        player.verticalSpeed -= 18 * dt;
+        player.y += player.verticalSpeed * dt;
+
+        if (player.y <= 0) {
+          player.y = 0;
+          player.verticalSpeed = 0;
+          player.grounded = true;
+        }
+
+        camera.position.set(
+          player.x,
+          player.y + EYE_HEIGHT,
+          player.z
+        );
+
+        // Gửi dữ liệu 20 lần mỗi giây
+        if (now - lastNetworkUpdate >= 50 && socket.connected) {
+          socket.emit("move", {
+            x: player.x,
+            y: player.y,
+            z: player.z,
+            yaw: player.yaw
+          });
+
+          lastNetworkUpdate = now;
+        }
+      }
+
+      // Làm chuyển động người chơi khác mượt hơn
+      for (const remote of remotePlayers.values()) {
+        const target = remote.target;
+        const group = remote.group;
+        const alpha = 1 - Math.exp(-12 * dt);
+
+        group.position.x +=
+          (target.x - group.position.x) * alpha;
+
+        group.position.y +=
+          (target.y - group.position.y) * alpha;
+
+        group.position.z +=
+          (target.z - group.position.z) * alpha;
+
+        group.rotation.y +=
+          Math.atan2(
+            Math.sin(target.yaw - group.rotation.y),
+            Math.cos(target.yaw - group.rotation.y)
+          ) * alpha;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    requestAnimationFrame(animate);
+
+    // =========================
+    // 8. ĐỔI KÍCH THƯỚC MÀN HÌNH
+    // =========================
+
+    window.addEventListener("resize", () => {
+      camera.aspect =
+        window.innerWidth / window.innerHeight;
+
+      camera.updateProjectionMatrix();
+
+      renderer.setSize(
+        window.innerWidth,
+        window.innerHeight
+      );
+    });
+  </script>
+</body>
+</html>
