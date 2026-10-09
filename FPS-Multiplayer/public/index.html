@@ -5,51 +5,54 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>FPS Multiplayer</title>
+
 <style>
 *{box-sizing:border-box}
 body{margin:0;overflow:hidden;background:#10151c;font-family:Arial,sans-serif;color:white}
-canvas{display:block}
+canvas{display:block;touch-action:none}
 #hud{position:fixed;inset:0;pointer-events:none}
-#top{
-  position:absolute;top:12px;left:12px;right:12px;
-  display:flex;justify-content:space-between;gap:10px;align-items:flex-start
-}
+#top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .panel{background:#101820d9;border:1px solid #ffffff30;border-radius:10px;padding:10px}
 #health{width:190px}
 #healthbar{height:12px;background:#4b2222;border-radius:10px;overflow:hidden;margin-top:7px}
 #healthfill{height:100%;width:100%;background:#32db70;transition:width .15s}
-#status{font-size:12px;color:#b8c8d9;margin-top:5px}
-#hint{position:absolute;top:100px;left:50%;transform:translateX(-50%);text-align:center;
-background:#101820aa;padding:8px 12px;border-radius:8px;font-size:13px}
-#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-font-size:26px;font-weight:bold;text-shadow:0 0 5px black}
+#status{font-size:12px;color:#b8c8d9;margin-top:5px;max-width:260px}
+#hint{position:absolute;top:100px;left:50%;transform:translateX(-50%);text-align:center;background:#101820aa;padding:8px 12px;border-radius:8px;font-size:13px}
+#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:26px;font-weight:bold;text-shadow:0 0 5px black}
 #controls{position:fixed;inset:0;pointer-events:none}
-#pad{position:absolute;left:18px;bottom:22px;display:grid;
-grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px;gap:5px;
-pointer-events:auto}
-.ctrl{border:1px solid #ffffff55;background:#152434cc;color:white;
-border-radius:13px;font-size:24px;touch-action:none;user-select:none}
+#pad{position:absolute;left:18px;bottom:22px;display:grid;grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px;gap:5px;pointer-events:auto}
+.ctrl{border:1px solid #ffffff55;background:#152434cc;color:white;border-radius:13px;font-size:24px;touch-action:none;user-select:none}
 .ctrl:active,.ctrl.active{background:#3686c7}
 #up{grid-column:2;grid-row:1}
 #left{grid-column:1;grid-row:2}
 #down{grid-column:2;grid-row:2}
 #right{grid-column:3;grid-row:2}
 #actions{position:absolute;right:20px;bottom:28px;display:flex;gap:12px;align-items:end;pointer-events:auto}
-.action{width:72px;height:72px;border-radius:50%;border:2px solid #ffffff66;
-background:#152434dd;color:white;font-weight:bold;touch-action:none}
+.action{width:72px;height:72px;border-radius:50%;border:2px solid #ffffff66;background:#152434dd;color:white;font-weight:bold;touch-action:none;user-select:none}
 #jump{width:58px;height:58px;font-size:12px}
 #shoot{background:#8d2424e8;font-size:14px}
-#start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-background:#08111beF;z-index:10;text-align:center;padding:20px}
-#start button{font-size:18px;padding:13px 26px;border:0;border-radius:8px;
-background:#2688dd;color:white;margin-top:14px}
+#start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#08111bef;z-index:10;text-align:center;padding:20px}
+#start button{font-size:18px;padding:13px 26px;border:0;border-radius:8px;background:#2688dd;color:white;margin-top:14px}
 #start p{color:#c4d0dc;line-height:1.6}
+#hitmarker{position:absolute;left:50%;top:calc(50% + 25px);transform:translateX(-50%);font-size:13px;color:#ff8d8d;text-shadow:0 0 5px #000;display:none}
 @media(min-width:800px){
  #pad{opacity:.65}
  #actions{opacity:.8}
 }
 </style>
+
+<!-- Nạp Socket.IO trước khi chạy game -->
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+  }
+}
+</script>
 </head>
+
 <body>
 <div id="hud">
   <div id="top">
@@ -58,10 +61,11 @@ background:#2688dd;color:white;margin-top:14px}
       <div id="healthbar"><div id="healthfill"></div></div>
       <div id="status">Đang kết nối server...</div>
     </div>
-    <div class="panel">FPS MULTIPLAYER<br><small>Đấu trường mở rộng</small></div>
+    <div class="panel">FPS MULTIPLAYER<br><small>Đấu trường mở rộng</small><br><small id="playercount">Người chơi: 1</small></div>
   </div>
   <div id="hint">WASD / mũi tên: di chuyển · Chuột: nhìn · Space: nhảy</div>
   <div id="crosshair">+</div>
+  <div id="hitmarker"></div>
 </div>
 
 <div id="controls">
@@ -73,29 +77,24 @@ background:#2688dd;color:white;margin-top:14px}
   </div>
   <div id="actions">
     <button class="action" id="jump">NHẢY</button>
-    <button class="action" id="shoot">NGẮM</button>
+    <button class="action" id="shoot">BẮN</button>
   </div>
 </div>
 
 <div id="start">
  <div>
    <h1>FPS MULTIPLAYER</h1>
-   <p>Đấu trường rộng hơn · HP 500<br>Di chuyển theo hướng camera đang nhìn.</p>
+   <p>Cùng bản đồ · Multiplayer đồng bộ<br>HP 500 · Mỗi phát trúng gây 25 sát thương.</p>
    <button id="play">VÀO GAME</button>
-   <p><small>Máy tính: WASD, chuột, Space<br>Điện thoại: nút mũi tên và nút nhảy</small></p>
+   <p><small>Máy tính: WASD, chuột, Space, click trái để bắn<br>Điện thoại: nút mũi tên, vuốt để nhìn và nút BẮN</small></p>
  </div>
 </div>
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
-  }
-}
-</script>
-
 <script type="module">
 import * as THREE from 'three';
+
+const SERVER_URL = 'https://fps-multiplayer-76j5.onrender.com';
+const MAX_HP = 500;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x91b6d2);
@@ -104,42 +103,63 @@ scene.fog = new THREE.Fog(0x91b6d2, 75, 220);
 const camera = new THREE.PerspectiveCamera(
   75, innerWidth / innerHeight, 0.1, 350
 );
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
 renderer.shadowMap.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xdceeff, 0x58604c, 2));
+
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(25, 50, 20);
 sun.castShadow = true;
 scene.add(sun);
 
 const mat = (color, roughness=0.9) =>
-  new THREE.MeshStandardMaterial({ color, roughness });
+  new THREE.MeshStandardMaterial({color, roughness});
 
 function box(x,y,z,sx,sy,sz,material){
-  const m = new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(sx,sy,sz), material
   );
-  m.position.set(x,y,z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  scene.add(m);
-  return m;
+  mesh.position.set(x,y,z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  return mesh;
 }
 
-// Bản đồ rộng 180 x 180
+/*
+ * Tạo bản đồ xác định.
+ * Tất cả máy chạy cùng công thức và cùng seed,
+ * vì vậy nhà và vật cản có cùng tọa độ.
+ */
+function seededRandom(seed){
+  let state = seed >>> 0;
+  return function(){
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+const rand = seededRandom(20261009);
+
+// Sân rộng 180 x 180
 box(0,-0.5,0,180,1,180,mat(0x53664d));
+
 const road = mat(0x62676c);
+const marking = mat(0xe5dfb0);
+
 box(0,0.015,0,18,0.04,180,road);
 box(0,0.02,0,180,0.04,18,road);
 
 // Vạch đường
 for(let i=-80;i<=80;i+=12){
-  box(0,0.05,i,0.25,0.03,5,mat(0xe5dfb0));
-  box(i,0.05,0,5,0.03,0.25,mat(0xe5dfb0));
+  box(0,0.05,i,0.25,0.03,5,marking);
+  box(i,0.05,0,5,0.03,0.25,marking);
 }
 
 // Tường biên
@@ -149,273 +169,648 @@ box(0,2,90,180,4,1,wall);
 box(-90,2,0,1,4,180,wall);
 box(90,2,0,1,4,180,wall);
 
-// Nhà và vật cản
-const buildingColors = [0x9c9a8a,0xb1a18d,0x828b91,0xb6b8ae];
-for(let i=0;i<32;i++){
-  const x = (Math.random()-.5)*150;
-  const z = (Math.random()-.5)*150;
+// Nhà có vị trí cố định giữa tất cả người chơi
+const buildingColors = [
+  0x9c9a8a, 0xb1a18d, 0x828b91, 0xb6b8ae
+];
+
+for(let i=0;i<45;i++){
+  const x = (rand() - 0.5) * 150;
+  const z = (rand() - 0.5) * 150;
+
+  // Giữ đường giữa bản đồ thông thoáng
   if(Math.abs(x)<18 || Math.abs(z)<18) continue;
-  const w=6+Math.random()*8, d=6+Math.random()*8;
-  const h=3+Math.random()*7;
-  box(x,h/2,z,w,h,d,mat(buildingColors[i%buildingColors.length]));
+
+  const w = 6 + rand()*8;
+  const d = 6 + rand()*8;
+  const h = 3 + rand()*7;
+
+  box(
+    x,h/2,z,w,h,d,
+    mat(buildingColors[i % buildingColors.length])
+  );
 }
 
-// Người chơi cục bộ
+// Người chơi của máy hiện tại
 const player = {
-  pos:new THREE.Vector3(0,0,8),
-  vel:new THREE.Vector3(),
-  yaw:0,
-  pitch:0,
-  hp:500,
-  onGround:true
+  pos: new THREE.Vector3(0,0,8),
+  vel: new THREE.Vector3(),
+  yaw: 0,
+  pitch: 0,
+  hp: MAX_HP,
+  alive: true,
+  onGround: true
 };
 
+// Nhân vật cục bộ
 const playerBody = new THREE.Group();
-const bodyMesh = new THREE.Mesh(
+
+const localBodyMesh = new THREE.Mesh(
   new THREE.CapsuleGeometry(0.42,0.8,4,8),
   mat(0x2869bd)
 );
-bodyMesh.position.y=1.05;
-playerBody.add(bodyMesh);
+localBodyMesh.position.y = 1.05;
+playerBody.add(localBodyMesh);
 scene.add(playerBody);
 
+// Không render thân người của chính mình trong góc nhìn FPS
+playerBody.visible = false;
+
+// Mô hình súng đơn giản
 const gun = new THREE.Group();
+
 const gunBody = new THREE.Mesh(
-  new THREE.BoxGeometry(0.16,0.16,0.65), mat(0x222831)
+  new THREE.BoxGeometry(0.16,0.16,0.65),
+  mat(0x222831)
 );
 gun.add(gunBody);
+
 const barrel = new THREE.Mesh(
   new THREE.CylinderGeometry(0.045,0.045,0.36,8),
   mat(0x11151a)
 );
-barrel.rotation.x=Math.PI/2;
-barrel.position.z=-0.43;
+barrel.rotation.x = Math.PI/2;
+barrel.position.z = -0.43;
 gun.add(barrel);
+
 camera.add(gun);
 gun.position.set(0.32,-0.28,-0.65);
 scene.add(camera);
 
 const keys = new Set();
 const touchKeys = new Set();
-let jumpQueued=false;
-let mouseLocked=false;
+
+let jumpQueued = false;
+let mouseLocked = false;
+let socket = null;
+let connected = false;
+let lastMoveSend = 0;
+let lastShotTime = 0;
+let lastShotResultTime = 0;
+
+const remotePlayers = new Map();
+const remoteMeshes = new Map();
+const raycaster = new THREE.Raycaster();
+raycaster.far = 35;
+
+function setStatus(text){
+  document.getElementById('status').textContent = text;
+}
 
 function setHP(value){
-  player.hp=Math.max(0,Math.min(500,value));
-  document.getElementById('hptext').textContent=player.hp;
-  document.getElementById('healthfill').style.width=(player.hp/500*100)+'%';
+  player.hp = Math.max(0, Math.min(MAX_HP, value));
+  document.getElementById('hptext').textContent = player.hp;
+  document.getElementById('healthfill').style.width =
+    (player.hp / MAX_HP * 100) + '%';
+
+  document.getElementById('healthfill').style.background =
+    player.hp > 250 ? '#32db70' :
+    player.hp > 100 ? '#f0c342' : '#ed3434';
 }
 
-// Keyboard controls
-addEventListener('keydown',e=>{
+function updatePlayerCount(){
+  document.getElementById('playercount').textContent =
+    'Người chơi: ' + (remotePlayers.size + 1);
+}
+
+function showMessage(text, duration=1200){
+  const el = document.getElementById('hitmarker');
+  el.textContent = text;
+  el.style.display = 'block';
+
+  lastShotResultTime = performance.now();
+
+  setTimeout(()=>{
+    if(performance.now() - lastShotResultTime >= duration){
+      el.style.display = 'none';
+    }
+  }, duration);
+}
+
+// Điều khiển bàn phím
+addEventListener('keydown', e=>{
   keys.add(e.code);
-  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))
+
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)){
     e.preventDefault();
-  if(e.code==='Space') jumpQueued=true;
-});
-addEventListener('keyup',e=>keys.delete(e.code));
+  }
 
-// Touch controls
+  if(e.code === 'Space' && !e.repeat){
+    jumpQueued = true;
+  }
+});
+
+addEventListener('keyup', e=>keys.delete(e.code));
+
+addEventListener('blur', ()=>{
+  keys.clear();
+  touchKeys.clear();
+});
+
+// Nút điều khiển điện thoại
 document.querySelectorAll('[data-key]').forEach(btn=>{
-  const k=btn.dataset.key;
-  const down=e=>{e.preventDefault();touchKeys.add(k);btn.classList.add('active');};
-  const up=e=>{e.preventDefault();touchKeys.delete(k);btn.classList.remove('active');};
-  btn.addEventListener('pointerdown',down);
-  btn.addEventListener('pointerup',up);
-  btn.addEventListener('pointercancel',up);
-  btn.addEventListener('lostpointercapture',up);
-});
-document.getElementById('jump').addEventListener('pointerdown',e=>{
-  e.preventDefault();jumpQueued=true;
-});
+  const key = btn.dataset.key;
 
-// Mouse camera look
-renderer.domElement.addEventListener('click',()=>{
-  if(innerWidth>800) renderer.domElement.requestPointerLock?.();
-});
-document.addEventListener('pointerlockchange',()=>{
-  mouseLocked=document.pointerLockElement===renderer.domElement;
-});
-document.addEventListener('mousemove',e=>{
-  if(!mouseLocked)return;
-  player.yaw-=e.movementX*0.002;
-  player.pitch-=e.movementY*0.002;
-  player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch));
-});
-
-// Touch swipe to look around
-let lookPointer=null,lastX=0,lastY=0;
-renderer.domElement.addEventListener('pointerdown',e=>{
-  if(e.pointerType==='touch' && e.clientX>innerWidth*0.35){
-    lookPointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;
-  }
-});
-renderer.domElement.addEventListener('pointermove',e=>{
-  if(e.pointerId!==lookPointer)return;
-  player.yaw-=(e.clientX-lastX)*0.006;
-  player.pitch-=(e.clientY-lastY)*0.006;
-  player.pitch=Math.max(-1.45,Math.min(1.45,player.pitch));
-  lastX=e.clientX;lastY=e.clientY;
-});
-function endLook(e){if(e.pointerId===lookPointer)lookPointer=null;}
-renderer.domElement.addEventListener('pointerup',endLook);
-renderer.domElement.addEventListener('pointercancel',endLook);
-
-// Demo target markers: aim and press NGẮM to score a hit.
-const targets=[];
-for(let i=0;i<8;i++){
-  const x=(Math.random()-.5)*100;
-  const z=(Math.random()-.5)*100;
-  const target=new THREE.Group();
-  target.position.set(x,1.1,z);
-  const sphere=new THREE.Mesh(
-    new THREE.SphereGeometry(0.7,12,10),
-    mat(0xe64b4b)
-  );
-  target.add(sphere);
-  scene.add(target);
-  targets.push(target);
-}
-const raycaster=new THREE.Raycaster();
-document.getElementById('shoot').addEventListener('pointerdown',e=>{
-  e.preventDefault();
-  raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
-  const hits=raycaster.intersectObjects(targets,true);
-  if(hits.length){
-    const target=hits[0].object.parent;
-    target.visible=false;
-    document.getElementById('status').textContent='Ngắm trúng mục tiêu! +1 điểm';
-    setTimeout(()=>{
-      target.position.set((Math.random()-.5)*100,1.1,(Math.random()-.5)*100);
-      target.visible=true;
-    },1500);
-  }else{
-    document.getElementById('status').textContent='Chưa trúng mục tiêu';
-  }
-});
-
-// Server connection; same Socket.IO event names as starter project.
-let socket=null;
-try{
-  socket=window.io?.('https://fps-multiplayer-76j5.onrender.com');
-}catch(e){console.warn(e);}
-if(!socket){
-  const script=document.createElement('script');
-  script.src='https://cdn.socket.io/4.8.1/socket.io.min.js';
-  script.onload=()=>{
-    socket=window.io('https://fps-multiplayer-76j5.onrender.com');
-    setupSocket();
+  const down = e=>{
+    e.preventDefault();
+    touchKeys.add(key);
+    btn.classList.add('active');
   };
-  document.head.appendChild(script);
-}else setupSocket();
 
-const remotePlayers=new Map();
-function setupSocket(){
-  if(!socket)return;
-  socket.on('connect',()=>{
-    document.getElementById('status').textContent='Đã kết nối multiplayer';
-  });
-  socket.on('disconnect',()=>{
-    document.getElementById('status').textContent='Đang kết nối lại...';
-  });
+  const up = e=>{
+    e.preventDefault();
+    touchKeys.delete(key);
+    btn.classList.remove('active');
+  };
 
-  socket.on('currentPlayers',players=>{
-    if(!players)return;
-    Object.values(players).forEach(addRemote);
-  });
-  socket.on('playerJoined',addRemote);
-  socket.on('playerMoved',data=>{
-    const id=data?.id || data?.playerId;
-    const obj=remotePlayers.get(id);
-    if(!obj)return;
-    if(Number.isFinite(data.x))obj.position.x=data.x;
-    if(Number.isFinite(data.y))obj.position.y=data.y;
-    if(Number.isFinite(data.z))obj.position.z=data.z;
-  });
-  socket.on('playerLeft',data=>{
-    const id=typeof data==='string'?data:data?.id;
-    if(remotePlayers.has(id)){
-      scene.remove(remotePlayers.get(id));
-      remotePlayers.delete(id);
+  btn.addEventListener('pointerdown', down);
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', up);
+  btn.addEventListener('lostpointercapture', up);
+});
+
+document.getElementById('jump').addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  jumpQueued = true;
+});
+
+// Chuột: nhìn xung quanh
+renderer.domElement.addEventListener('click', ()=>{
+  if(innerWidth > 800 && document.getElementById('start').style.display === 'none'){
+    renderer.domElement.requestPointerLock?.();
+  }
+});
+
+document.addEventListener('pointerlockchange', ()=>{
+  mouseLocked = document.pointerLockElement === renderer.domElement;
+});
+
+document.addEventListener('mousemove', e=>{
+  if(!mouseLocked || !player.alive) return;
+
+  player.yaw -= e.movementX * 0.002;
+  player.pitch -= e.movementY * 0.002;
+  player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
+});
+
+// Vuốt để nhìn trên điện thoại
+let lookPointer = null;
+let lastX = 0;
+let lastY = 0;
+
+renderer.domElement.addEventListener('pointerdown', e=>{
+  if(e.pointerType === 'touch' && e.clientX > innerWidth * 0.35){
+    lookPointer = e.pointerId;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+});
+
+renderer.domElement.addEventListener('pointermove', e=>{
+  if(e.pointerId !== lookPointer || !player.alive) return;
+
+  player.yaw -= (e.clientX - lastX) * 0.006;
+  player.pitch -= (e.clientY - lastY) * 0.006;
+  player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
+
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+
+function endLook(e){
+  if(e.pointerId === lookPointer) lookPointer = null;
+}
+
+renderer.domElement.addEventListener('pointerup', endLook);
+renderer.domElement.addEventListener('pointercancel', endLook);
+
+// Tạo mô hình người chơi từ dữ liệu máy chủ
+function addRemote(id, data){
+  if(!id || !data || id === socket?.id) return;
+
+  let group = remotePlayers.get(id);
+
+  if(!group){
+    group = new THREE.Group();
+
+    const color = data.color || '#e4a63d';
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.8
+    });
+
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.42,0.8,4,8),
+      bodyMaterial
+    );
+    body.position.y = 1.05;
+    body.castShadow = true;
+    group.add(body);
+
+    // Dấu hiệu đơn giản phía trên đầu
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7,0.08,0.08),
+      new THREE.MeshBasicMaterial({color:0xffffff})
+    );
+    marker.position.y = 2.1;
+    group.add(marker);
+
+    group.userData.playerId = id;
+    scene.add(group);
+
+    remotePlayers.set(id, group);
+    remoteMeshes.set(id, body);
+  }
+
+  updateRemote(id, data);
+  updatePlayerCount();
+}
+
+function updateRemote(id, data){
+  const group = remotePlayers.get(id);
+  if(!group || !data) return;
+
+  if(Number.isFinite(data.x)) group.position.x = data.x;
+  if(Number.isFinite(data.y)) group.position.y = data.y;
+  if(Number.isFinite(data.z)) group.position.z = data.z;
+  if(Number.isFinite(data.yaw)) group.rotation.y = data.yaw;
+
+  group.userData.hp = Number.isFinite(data.hp) ? data.hp : MAX_HP;
+  group.userData.alive = data.alive !== false;
+
+  group.visible = group.userData.alive;
+}
+
+function removeRemote(id){
+  const group = remotePlayers.get(id);
+  if(!group) return;
+
+  scene.remove(group);
+
+  group.traverse(obj=>{
+    if(obj.geometry) obj.geometry.dispose();
+
+    if(obj.material){
+      if(Array.isArray(obj.material)){
+        obj.material.forEach(m=>m.dispose());
+      }else{
+        obj.material.dispose();
+      }
     }
   });
-}
-function addRemote(data){
-  if(!data)return;
-  const id=data.id || data.playerId;
-  if(!id || remotePlayers.has(id))return;
-  const g=new THREE.Group();
-  const mesh=new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.42,0.8,4,8),mat(0xe4a63d)
-  );
-  mesh.position.y=1.05;
-  g.add(mesh);
-  g.position.set(data.x||0,data.y||0,data.z||0);
-  scene.add(g);
-  remotePlayers.set(id,g);
+
+  remotePlayers.delete(id);
+  remoteMeshes.delete(id);
+  updatePlayerCount();
 }
 
-let last=performance.now();
+// Nhận danh sách đầy đủ: server gửi object {socketId: playerData}
+function syncAllPlayers(players){
+  if(!players || typeof players !== 'object') return;
+
+  for(const [id, data] of Object.entries(players)){
+    if(id === socket?.id) continue;
+    addRemote(id, data);
+  }
+
+  // Xóa nhân vật đã rời phòng hoặc không còn trong danh sách
+  for(const id of [...remotePlayers.keys()]){
+    if(!players[id]) removeRemote(id);
+  }
+
+  updatePlayerCount();
+}
+
+function setupSocket(){
+  socket = window.io(SERVER_URL, {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    timeout: 20000
+  });
+
+  socket.on('connect', ()=>{
+    connected = true;
+    setStatus('Đã kết nối multiplayer');
+    updatePlayerCount();
+  });
+
+  socket.on('connect_error', ()=>{
+    connected = false;
+    setStatus('Không kết nối được server; đang thử lại...');
+  });
+
+  socket.on('disconnect', ()=>{
+    connected = false;
+    setStatus('Mất kết nối; đang kết nối lại...');
+  });
+
+  // Server gửi danh sách người chơi hiện tại
+  socket.on('currentPlayers', players=>{
+    syncAllPlayers(players);
+  });
+
+  // Server mới gửi một người chơi tham gia
+  socket.on('playerJoined', data=>{
+    if(!data) return;
+    addRemote(data.id, data.player || data);
+  });
+
+  // Cập nhật vị trí người chơi khác
+  socket.on('playerMoved', data=>{
+    if(!data) return;
+
+    const id = data.id || data.playerId;
+    if(!id || id === socket.id) return;
+
+    updateRemote(id, data);
+  });
+
+  // Server gửi trạng thái toàn bộ người chơi sau hồi sinh
+  socket.on('playersState', players=>{
+    syncAllPlayers(players);
+  });
+
+  // Đồng bộ HP và trạng thái sống/chết
+  socket.on('playerHealth', data=>{
+    if(!data) return;
+
+    if(data.id === socket.id){
+      setHP(data.hp);
+
+      if(data.alive === false){
+        player.alive = false;
+        setStatus('Bạn đã bị hạ!');
+      }else if(data.alive === true){
+        player.alive = true;
+      }
+    }else{
+      const group = remotePlayers.get(data.id);
+      if(group){
+        group.userData.hp = data.hp;
+        group.userData.alive = data.alive !== false;
+        group.visible = group.userData.alive;
+      }
+    }
+  });
+
+  // Hiệu ứng thông báo khi có người trúng đạn
+  socket.on('playerDamaged', data=>{
+    if(!data) return;
+
+    if(data.targetId === socket.id){
+      setHP(data.hp);
+      if(data.eliminated){
+        player.alive = false;
+        setStatus('Bạn bị hạ! Đang chờ hồi sinh...');
+      }else{
+        setStatus('Bạn bị bắn! -' + data.damage + ' HP');
+      }
+    }else if(data.shooterId === socket.id){
+      showMessage(
+        data.eliminated ? 'HẠ GỤC ĐỐI THỦ!' : '-' + data.damage + ' HP'
+      );
+    }
+
+    const target = remotePlayers.get(data.targetId);
+    if(target){
+      target.userData.hp = data.hp;
+      if(data.eliminated){
+        target.userData.alive = false;
+        target.visible = false;
+      }
+    }
+  });
+
+  // Người chơi được hồi sinh
+  socket.on('playerRespawned', data=>{
+    if(!data || !data.id) return;
+
+    const info = data.player || {};
+
+    if(data.id === socket.id){
+      player.pos.set(
+        Number.isFinite(info.x) ? info.x : 0,
+        Number.isFinite(info.y) ? info.y : 0,
+        Number.isFinite(info.z) ? info.z : 8
+      );
+
+      player.yaw = Number.isFinite(info.yaw) ? info.yaw : 0;
+      player.pitch = 0;
+      player.vel.set(0,0,0);
+      player.alive = true;
+      player.onGround = true;
+      setHP(Number.isFinite(info.hp) ? info.hp : MAX_HP);
+      setStatus('Đã hồi sinh!');
+    }else{
+      addRemote(data.id, info);
+    }
+  });
+
+  // Phản hồi cho người vừa bắn
+  socket.on('shotResult', data=>{
+    if(!data) return;
+
+    if(data.hit){
+      showMessage(data.eliminated ? 'HẠ GỤC!' : 'TRÚNG ĐÍCH!');
+      if(data.hp !== undefined && data.targetId === socket.id){
+        setHP(data.hp);
+      }
+    }else if(data.reason === 'too_far'){
+      showMessage('MỤC TIÊU QUÁ XA');
+    }else{
+      showMessage('BẮN TRƯỢT');
+    }
+  });
+
+  socket.on('playerLeft', data=>{
+    const id = typeof data === 'string' ? data : data?.id;
+    if(id) removeRemote(id);
+  });
+}
+
+// Bắn theo tâm ngắm vào người chơi khác
+function shoot(){
+  if(!connected || !socket){
+    setStatus('Chưa kết nối server');
+    return;
+  }
+
+  if(!player.alive){
+    setStatus('Bạn đã bị hạ. Hãy chờ hồi sinh.');
+    return;
+  }
+
+  const now = performance.now();
+  if(now - lastShotTime < 260) return;
+  lastShotTime = now;
+
+  // Tính vị trí và hướng camera mới nhất
+  camera.updateMatrixWorld(true);
+
+  const direction = new THREE.Vector3();
+  camera.getWorldDirection(direction);
+
+  raycaster.set(camera.position, direction);
+  raycaster.far = 35;
+
+  const groups = [...remotePlayers.values()].filter(
+    group => group.visible && group.userData.alive !== false
+  );
+
+  const hits = raycaster.intersectObjects(groups, true);
+
+  let targetId = null;
+
+  if(hits.length){
+    let obj = hits[0].object;
+
+    while(obj && !obj.userData.playerId){
+      obj = obj.parent;
+    }
+
+    if(obj){
+      targetId = obj.userData.playerId;
+    }
+  }
+
+  if(!targetId){
+    showMessage('BẮN TRƯỢT');
+    return;
+  }
+
+  // Máy chủ sẽ kiểm tra khoảng cách, hướng và HP
+  socket.emit('shoot', {targetId});
+
+  // Hiệu ứng giật súng nhẹ
+  gun.position.z = -0.52;
+  setTimeout(()=>{
+    gun.position.z = -0.65;
+  }, 70);
+}
+
+document.addEventListener('mousedown', e=>{
+  if(e.button === 0 && mouseLocked){
+    shoot();
+  }
+});
+
+document.getElementById('shoot').addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  shoot();
+});
+
+// Bắt đầu kết nối
+if(window.io){
+  setupSocket();
+}else{
+  setStatus('Không tải được thư viện Socket.IO');
+}
+
+// Vòng lặp game
+let last = performance.now();
+
 function animate(now){
   requestAnimationFrame(animate);
-  const dt=Math.min((now-last)/1000,0.04);
-  last=now;
 
-  const forward=keys.has('KeyW')||keys.has('ArrowUp')||touchKeys.has('up');
-  const backward=keys.has('KeyS')||keys.has('ArrowDown')||touchKeys.has('down');
-  const left=keys.has('KeyA')||keys.has('ArrowLeft')||touchKeys.has('left');
-  const right=keys.has('KeyD')||keys.has('ArrowRight')||touchKeys.has('right');
+  const dt = Math.min((now-last)/1000, 0.04);
+  last = now;
 
-  // Di chuyển tương đối camera: nhìn hướng nào thì W tiến theo hướng đó.
-  const direction=new THREE.Vector3();
-  const forwardVec=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
-  const rightVec=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
-  if(forward)direction.add(forwardVec);
-  if(backward)direction.sub(forwardVec);
-  if(right)direction.add(rightVec);
-  if(left)direction.sub(rightVec);
-  if(direction.lengthSq()>0)direction.normalize();
+  if(player.alive){
+    const forward =
+      keys.has('KeyW') || keys.has('ArrowUp') || touchKeys.has('up');
+    const backward =
+      keys.has('KeyS') || keys.has('ArrowDown') || touchKeys.has('down');
+    const left =
+      keys.has('KeyA') || keys.has('ArrowLeft') || touchKeys.has('left');
+    const right =
+      keys.has('KeyD') || keys.has('ArrowRight') || touchKeys.has('right');
 
-  const speed=(keys.has('ShiftLeft')?10:7)*dt;
-  player.pos.addScaledVector(direction,speed);
+    // Di chuyển theo hướng nhìn, đồng nhất với yaw gửi lên server
+    const direction = new THREE.Vector3();
 
-  if(jumpQueued && player.onGround){
-    player.vel.y=7;
-    player.onGround=false;
+    const forwardVec = new THREE.Vector3(
+      -Math.sin(player.yaw), 0, -Math.cos(player.yaw)
+    );
+
+    const rightVec = new THREE.Vector3(
+      Math.cos(player.yaw), 0, -Math.sin(player.yaw)
+    );
+
+    if(forward) direction.add(forwardVec);
+    if(backward) direction.sub(forwardVec);
+    if(right) direction.add(rightVec);
+    if(left) direction.sub(rightVec);
+
+    if(direction.lengthSq() > 0) direction.normalize();
+
+    const speed = (keys.has('ShiftLeft') ? 10 : 7) * dt;
+    player.pos.addScaledVector(direction, speed);
+
+    if(jumpQueued && player.onGround){
+      player.vel.y = 7;
+      player.onGround = false;
+    }
+
+    player.vel.y -= 19 * dt;
+    player.pos.y += player.vel.y * dt;
+
+    if(player.pos.y < 0){
+      player.pos.y = 0;
+      player.vel.y = 0;
+      player.onGround = true;
+    }
+
+    player.pos.x = Math.max(-87, Math.min(87, player.pos.x));
+    player.pos.z = Math.max(-87, Math.min(87, player.pos.z));
   }
-  jumpQueued=false;
-  player.vel.y-=19*dt;
-  player.pos.y+=player.vel.y*dt;
-  if(player.pos.y<0){
-    player.pos.y=0;
-    player.vel.y=0;
-    player.onGround=true;
-  }
 
-  // Giới hạn map
-  player.pos.x=Math.max(-87,Math.min(87,player.pos.x));
-  player.pos.z=Math.max(-87,Math.min(87,player.pos.z));
+  jumpQueued = false;
 
   playerBody.position.copy(player.pos);
-  playerBody.rotation.y=player.yaw;
+  playerBody.rotation.y = player.yaw;
 
-  camera.position.set(player.pos.x,player.pos.y+1.6,player.pos.z);
-  camera.rotation.order='YXZ';
-  camera.rotation.y=player.yaw;
-  camera.rotation.x=player.pitch;
+  camera.position.set(
+    player.pos.x,
+    player.pos.y + 1.6,
+    player.pos.z
+  );
 
-  renderer.render(scene,camera);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  // Gửi vị trí lên máy chủ 20 lần/giây.
+  // Máy chủ phát vị trí này cho những người chơi còn lại.
+  if(socket && connected && now-lastMoveSend >= 50){
+    lastMoveSend = now;
+
+    socket.emit('move', {
+      x: player.pos.x,
+      y: player.pos.y,
+      z: player.pos.z,
+      yaw: player.yaw
+    });
+  }
+
+  renderer.render(scene, camera);
 }
+
 requestAnimationFrame(animate);
 
-document.getElementById('play').addEventListener('click',()=>{
-  document.getElementById('start').style.display='none';
-  if(innerWidth>800)renderer.domElement.requestPointerLock?.();
+document.getElementById('play').addEventListener('click', ()=>{
+  document.getElementById('start').style.display = 'none';
+
+  if(innerWidth > 800){
+    renderer.domElement.requestPointerLock?.();
+  }
 });
-addEventListener('resize',()=>{
-  camera.aspect=innerWidth/innerHeight;
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
 });
 </script>
 </body>
